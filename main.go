@@ -3,16 +3,18 @@ package main
 import (
 	"fmt"
 	"log"
-	"memcached-dump/client"
 	"net"
 	"os"
+
+	"memcached-dump/cmd"
+	"memcached-dump/internal/client"
 )
 
-func init() {
-	log.SetFlags(log.LstdFlags)
+func main() {
+	cmd.Execute()
 }
 
-func main() {
+func main2() {
 	if len(os.Args) < 2 {
 		printDefault()
 		return
@@ -68,7 +70,7 @@ func main() {
 		if len(keys) > 0 {
 			i := 0
 			fmt.Println("----------------------------------------")
-			for name, _ := range keys {
+			for name := range keys {
 				i++
 				fmt.Println(i, name)
 			}

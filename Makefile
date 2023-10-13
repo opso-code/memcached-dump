@@ -16,10 +16,10 @@ default:
 	go run ${CMD_DUMP}
 
 dev:
-	go build -o ${BINARY} ${CMD_DUMP}
+	go build -ldflags="-s -w" -o ${BINARY} ${CMD_DUMP}
 
 release:
 	go clean
-	CGO_ENABLED=0 GOOS=darwin GOARCH=${GOARCH} go build ${LDFLAGS} -o ${RELEASE_DIR}/${BINARY}_darwin ${CMD_DUMP}
-	CGO_ENABLED=0 GOOS=linux GOARCH=${GOARCH} go build ${LDFLAGS} -o ${RELEASE_DIR}/${BINARY} ${CMD_DUMP}
-	CGO_ENABLED=0 GOOS=windows GOARCH=${GOARCH} go build ${LDFLAGS} -o ${RELEASE_DIR}/${BINARY}.exe ${CMD_DUMP}
+	CGO_ENABLED=0 GOOS=darwin GOARCH=${GOARCH} go build -ldflags="-s -w" ${LDFLAGS} -o ${RELEASE_DIR}/${BINARY}_darwin ${CMD_DUMP}
+	CGO_ENABLED=0 GOOS=linux GOARCH=${GOARCH} go build -ldflags="-s -w" ${LDFLAGS} -o ${RELEASE_DIR}/${BINARY} ${CMD_DUMP}
+	CGO_ENABLED=0 GOOS=windows GOARCH=${GOARCH} go build -ldflags="-s -w" ${LDFLAGS} -o ${RELEASE_DIR}/${BINARY}.exe ${CMD_DUMP}

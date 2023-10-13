@@ -3,11 +3,11 @@ package utils
 import "fmt"
 
 type Bar struct {
-	percent int64  //百分比
-	cur     int64  //当前进度位置
-	total   int64  //总进度
-	rate    string //进度条
-	graph   string //显示符号
+	percent int64  // 百分比
+	cur     int64  // 当前进度位置
+	total   int64  // 总进度
+	rate    string // 进度条
+	graph   string // 显示符号
 }
 
 func (bar *Bar) NewOption(start, total int64) {
@@ -18,7 +18,7 @@ func (bar *Bar) NewOption(start, total int64) {
 	}
 	bar.percent = bar.getPercent()
 	for i := 0; i < int(bar.percent); i += 2 {
-		bar.rate += bar.graph //初始化进度条位置
+		bar.rate += bar.graph // 初始化进度条位置
 	}
 }
 

@@ -6,13 +6,14 @@ import (
 	"fmt"
 	"log"
 	"math"
-	"memcached-dump/conn"
-	"memcached-dump/utils"
 	"net"
 	"net/url"
 	"os"
 	"strings"
 	"time"
+
+	"memcached-dump/conn"
+	"memcached-dump/utils"
 )
 
 var (
@@ -109,8 +110,9 @@ func (c *Client) GetSlabs() ([]int, int, error) {
 }
 
 type Key struct {
-	Name string
-	Exp  int
+	Name string // 键名
+	Exp  int    // 过期时间戳
+	Size int    // 大小
 }
 
 func (c *Client) GetKeysByCacheDump() (map[string]Key, error) {
@@ -122,7 +124,6 @@ func (c *Client) GetKeysByCacheDump() (map[string]Key, error) {
 	keys := make(map[string]Key)
 	for _, slab := range slabs {
 		cmd := fmt.Sprintf("stats cachedump %d 0\r\n", slab)
-		//fmt.Println(strings.TrimRight(cmd, "\r\n"))
 		_, err = c.conn.Rw.Write([]byte(cmd))
 		if err != nil {
 			return nil, err
@@ -142,21 +143,20 @@ func (c *Client) GetKeysByCacheDump() (map[string]Key, error) {
 			if bytes.Equal(line, resultError) {
 				return nil, errors.New("command error")
 			}
-			//log.Println(slab, string(line[:len(line)-2]))
+			// log.Println(slab, string(line[:len(line)-2]))
 			pattern := "ITEM %s [%d b; %d s]\r\n"
 			var key Key
-			var b byte
-			_, err = fmt.Sscanf(string(line), pattern, &key.Name, &b, &key.Exp)
+			_, err = fmt.Sscanf(string(line), pattern, &key.Name, &key.Size, &key.Exp)
 			if err != nil {
-				log.Println(err, key)
+				log.Printf("parse line failed, line %s, error %s \n", line, err)
 				continue
 			}
 			keys[key.Name] = key
 		}
 	}
-	log.Printf("\033[7;37;40m[use stats cachedump]\033[0m\n")
+	log.Printf("\033[7;37;40m[!!注意stats cachedump命令导出的数据可能不全!!]\033[0m\n")
 	if len(keys) < total {
-		log.Printf("\033[7;37;40m These may not be all the keys (%d/%d)\033[0m\n", len(keys), total)
+		log.Printf("\033[7;37;40m[These may not be all the keys (%d/%d)]\033[0m\n", len(keys), total)
 	}
 	return keys, nil
 }
@@ -205,7 +205,7 @@ func (c *Client) GetKeysByCrawler() (map[string]Key, error) {
 		if err != nil {
 			return nil, err
 		}
-		//fmt.Println(lineStr)
+		// fmt.Println(lineStr)
 		_, err = fmt.Sscanf(lineStr, pattern, &k.Name, &k.Exp, &la, &cas)
 		if err != nil {
 			return nil, errors.New("parse error: " + err.Error())
@@ -221,9 +221,9 @@ func (c *Client) GetKeys() (map[string]Key, error) {
 		return nil, err
 	}
 	log.Println("memcached version", ver)
-	f := utils.CompareVer(ver, "1.4.31") // 1.4.31 之后才有lru_crawler metadump命令
+	metaDumpSupport := utils.CompareVer(ver, "1.4.31") >= 0 // 是否支持`lru_crawler metadump`命令
 	var keys map[string]Key
-	if f < 0 {
+	if !metaDumpSupport {
 		keys, err = c.GetKeysByCacheDump()
 		if err != nil {
 			log.Println(err)
@@ -232,8 +232,9 @@ func (c *Client) GetKeys() (map[string]Key, error) {
 	} else {
 		keys, err = c.GetKeysByCrawler()
 		if err != nil {
+			log.Printf("GetKeysByCrawler failed %s\n", err)
 			if strings.HasPrefix(err.Error(), "CLIENT_ERROR") || strings.Contains(err.Error(), "i/o timeout") {
-				//log.Println("use `stats cachedump` instead of 'lru_crawler'", err.Error())
+				// log.Println("use `stats cachedump` instead of 'lru_crawler'", err.Error())
 				keys, err = c.GetKeysByCacheDump()
 				if err != nil {
 					return nil, err
@@ -266,7 +267,7 @@ func (c *Client) Store() (int, error) {
 	}
 	filename := utils.GetDumpFilename(c.conn.Addr)
 	var f *os.File
-	f, err = os.OpenFile(filename, os.O_WRONLY|os.O_CREATE, 0666)
+	f, err = os.OpenFile(filename, os.O_WRONLY|os.O_CREATE, 0o666)
 	if err != nil {
 		return 0, err
 	}
@@ -287,7 +288,7 @@ func (c *Client) Store() (int, error) {
 		}
 		for _, item := range items {
 			val := fmt.Sprintf("%s##%d##%d##%s", item.Key, item.Flags, item.Expire, item.Value)
-			//log.Println(val)
+			// log.Println(val)
 			_, err = f.WriteString(val + "\n")
 			if err != nil {
 				return 0, err
@@ -426,7 +427,7 @@ func (c *Client) Add(item Item) error {
 		return nil
 	}
 	if bytes.Equal(line, resultNotStored) {
-		//log.Println("add failed, key exists " + item.Key)
+		// log.Println("add failed, key exists " + item.Key)
 		return nil
 	}
 	if bytes.Equal(line, resultEnd) {
