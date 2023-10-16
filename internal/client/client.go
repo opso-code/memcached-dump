@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"memcached-dump/conn"
+	"memcached-dump/internal/conn"
 	"memcached-dump/utils"
 )
 

@@ -1,3 +1,3 @@
 package version
 
-const BuildVersion = "1.1.0"
+const BuildVersion = "1.1.1"
