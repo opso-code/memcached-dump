@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -25,6 +26,8 @@ var (
 
 	resultClientErrorPrefix = []byte("CLIENT_ERROR ")
 )
+
+const SupportMetaDumpVersion = "1.4.31"
 
 type Client struct {
 	conn *conn.Conn
@@ -75,6 +78,72 @@ func (c *Client) Version() (string, error) {
 	return ver, nil
 }
 
+// stats结果信息
+type StatsInfo struct {
+	Pid             int      // pid
+	Uptime          int64    // 服务已运行秒数
+	Time            int64    // 服务器当前Unix时间戳
+	Version         string   // memcached版本号
+	CurrConnections int      // 当前连接数
+	CurrItems       int      // 当前存储的数据条数
+	Raw             []string // 原始数据
+}
+
+func (c *Client) Stats() (*StatsInfo, error) {
+	var info StatsInfo
+	cmd := []byte("stats\r\n")
+	_, err := c.conn.Rw.Write(cmd)
+	if err != nil {
+		return nil, err
+	}
+	err = c.conn.Rw.Flush()
+	if err != nil {
+		return nil, err
+	}
+	for {
+		line, err := c.conn.Rw.ReadSlice('\n')
+		if err != nil {
+			return nil, err
+		}
+		if bytes.Equal(line, resultError) {
+			return nil, errors.New("ERROR: invalid cmd")
+		}
+		if bytes.Equal(line, resultEnd) {
+			break
+		}
+		lineStr := strings.TrimRight(string(line), "\r\n")
+		if !strings.Contains(lineStr, "STAT ") {
+			continue
+		}
+		p := strings.Split(lineStr, " ")
+		var k string
+		var v string
+		if len(p) >= 3 {
+			k = p[1]
+			v = p[2]
+		} else {
+			continue
+		}
+		info.Raw = append(info.Raw, lineStr)
+
+		switch k {
+		case "pid":
+			info.Pid, _ = strconv.Atoi(v)
+		case "curr_connections":
+			info.CurrConnections, _ = strconv.Atoi(v)
+		case "curr_items":
+			info.CurrItems, _ = strconv.Atoi(v)
+		case "uptime":
+			info.Uptime, _ = strconv.ParseInt(v, 10, 64)
+		case "time":
+			info.Time, _ = strconv.ParseInt(v, 10, 64)
+		case "version":
+			info.Version = v
+		}
+	}
+	return &info, nil
+}
+
 func (c *Client) GetSlabs() ([]int, int, error) {
 	cmd := []byte("stats items\r\n")
 	_, err := c.conn.Rw.Write(cmd)
@@ -110,9 +179,9 @@ func (c *Client) GetSlabs() ([]int, int, error) {
 }
 
 type Key struct {
-	Name string // 键名
-	Exp  int    // 过期时间戳
-	Size int    // 大小
+	Name     string // 键名
+	Size     int    // 大小
+	ExpireAt int64  // 过期时间戳
 }
 
 func (c *Client) GetKeysByCacheDump() (map[string]Key, error) {
@@ -121,6 +190,13 @@ func (c *Client) GetKeysByCacheDump() (map[string]Key, error) {
 		return nil, err
 	}
 	log.Printf("Get total %d keys with slabs %v \n", total, slabs)
+
+	info, err := c.Stats()
+	if err != nil {
+		return nil, err
+	}
+	log.Printf("Get total keys from stats command %d\n", info.CurrItems)
+
 	keys := make(map[string]Key)
 	for _, slab := range slabs {
 		cmd := fmt.Sprintf("stats cachedump %d 0\r\n", slab)
@@ -146,17 +222,17 @@ func (c *Client) GetKeysByCacheDump() (map[string]Key, error) {
 			// log.Println(slab, string(line[:len(line)-2]))
 			pattern := "ITEM %s [%d b; %d s]\r\n"
 			var key Key
-			_, err = fmt.Sscanf(string(line), pattern, &key.Name, &key.Size, &key.Exp)
+			_, err = fmt.Sscanf(string(line), pattern, &key.Name, &key.Size, &key.ExpireAt)
 			if err != nil {
 				log.Printf("parse line failed, line %s, error %s \n", line, err)
 				continue
 			}
+			if key.ExpireAt == info.Time {
+				key.ExpireAt = 0 // 不过期
+			}
+			// log.Printf("time %d exp %d\n", info.Time, key.ExpireAt)
 			keys[key.Name] = key
 		}
-	}
-	log.Printf("\033[7;37;40m[!!注意stats cachedump命令导出的数据可能不全!!]\033[0m\n")
-	if len(keys) < total {
-		log.Printf("\033[7;37;40m[These may not be all the keys (%d/%d)]\033[0m\n", len(keys), total)
 	}
 	return keys, nil
 }
@@ -205,10 +281,9 @@ func (c *Client) GetKeysByCrawler() (map[string]Key, error) {
 		if err != nil {
 			return nil, err
 		}
-		// fmt.Println(lineStr)
-		_, err = fmt.Sscanf(lineStr, pattern, &k.Name, &k.Exp, &la, &cas)
+		_, err = fmt.Sscanf(lineStr, pattern, &k.Name, &k.ExpireAt, &la, &cas)
 		if err != nil {
-			return nil, errors.New("parse error: " + err.Error())
+			return nil, fmt.Errorf("parse string %s, error %s", lineStr, err)
 		}
 		m[k.Name] = k
 	}
@@ -221,26 +296,20 @@ func (c *Client) GetKeys() (map[string]Key, error) {
 		return nil, err
 	}
 	log.Println("memcached version", ver)
-	metaDumpSupport := utils.CompareVer(ver, "1.4.31") >= 0 // 是否支持`lru_crawler metadump`命令
+	metaDumpSupport := utils.CompareVer(ver, SupportMetaDumpVersion) >= 0 // 是否支持`lru_crawler metadump`命令
 	var keys map[string]Key
 	if !metaDumpSupport {
+		log.Println("\033[7;37;40m[memcached版本过久，正在使用stats cachedump命令查询所有key（受限1M大小数据）]\033[0m")
 		keys, err = c.GetKeysByCacheDump()
 		if err != nil {
 			log.Println(err)
 			return nil, err
 		}
 	} else {
+		log.Println("\033[7;37;40m[使用lru_crawler metadump all命令查询所有key]\033[0m")
 		keys, err = c.GetKeysByCrawler()
 		if err != nil {
-			log.Printf("GetKeysByCrawler failed %s\n", err)
-			if strings.HasPrefix(err.Error(), "CLIENT_ERROR") || strings.Contains(err.Error(), "i/o timeout") {
-				// log.Println("use `stats cachedump` instead of 'lru_crawler'", err.Error())
-				keys, err = c.GetKeysByCacheDump()
-				if err != nil {
-					return nil, err
-				}
-				return keys, nil
-			}
+			log.Println("\033[7;37;40m[命令超时或memcached实例启动时未开启-o lru_crawler]\033[0m")
 			return nil, err
 		}
 	}
@@ -253,7 +322,7 @@ type Item struct {
 	Size   int
 	Casid  int
 	Value  string
-	Expire int
+	Expire int64
 }
 
 func (c *Client) Store() (int, error) {
@@ -281,25 +350,30 @@ func (c *Client) Store() (int, error) {
 	var bar utils.Bar
 	bar.NewOption(0, int64(length))
 	wl := 0
+	var failedKeys []string
 	for _, chunk := range chunks {
-		items, err := c.Gets(chunk)
+		items, keys, err := c.Gets(chunk)
 		if err != nil {
 			return 0, err
 		}
 		for _, item := range items {
 			val := fmt.Sprintf("%s##%d##%d##%s", item.Key, item.Flags, item.Expire, item.Value)
-			// log.Println(val)
-			_, err = f.WriteString(val + "\n")
-			if err != nil {
+			if _, err = f.WriteString(val + "\n"); err != nil {
 				return 0, err
 			}
 			wl++
 		}
 		bar.Play(int64(wl))
+		for _, key := range keys {
+			failedKeys = append(failedKeys, key)
+		}
 	}
 	bar.Finish()
 	if wl > 0 {
 		log.Printf("Save %d keys to file %s\n", wl, filename)
+	}
+	if len(failedKeys) > 0 {
+		log.Printf("Save failed keys %v\n", failedKeys)
 	}
 	return wl, nil
 }
@@ -328,8 +402,9 @@ func (c *Client) DumpTo(addr net.Addr) (int, error) {
 	var bar utils.Bar
 	bar.NewOption(0, int64(length))
 	wl := 0
+	var failedKeys []string
 	for _, chunk := range chunks {
-		items, err := c.Gets(chunk)
+		items, keys, err := c.Gets(chunk)
 		if err != nil {
 			return 0, err
 		}
@@ -341,46 +416,56 @@ func (c *Client) DumpTo(addr net.Addr) (int, error) {
 			}
 			wl++
 		}
+		for _, key := range keys {
+			failedKeys = append(failedKeys, key)
+		}
 		bar.Play(int64(wl))
 	}
 	bar.Finish()
 	if wl > 0 {
 		log.Printf("Dump %d keys to memcached %s success!\n", wl, cli.conn.Addr.String())
 	}
+	if len(failedKeys) > 0 {
+		log.Printf("Dump failed keys %v\n", failedKeys)
+	}
 	return wl, nil
 }
 
-func (c *Client) Gets(keys []Key) ([]Item, error) {
-	var names []string
-	m := make(map[string]Key)
-	temp := make(map[string]int)
+func (c *Client) Gets(keys []Key) (items []Item, failedKeys []string, err error) {
+	var (
+		names   []string       // 查询的所有key
+		keysMap map[string]Key // 查询结果 string => Key
+		temp    map[string]int // 执行成功标识
+	)
+
+	keysMap = make(map[string]Key, len(keys))
+	temp = make(map[string]int, len(keys))
 	for _, k := range keys {
-		m[k.Name] = k
+		keysMap[k.Name] = k
 		names = append(names, k.Name)
 	}
 	if len(names) == 0 {
-		return nil, nil
+		return nil, nil, errors.New("memcached is empty")
 	}
 	cmd := fmt.Sprintf("gets %s\r\n", strings.Join(names, " "))
-	_, err := c.conn.Rw.Write([]byte(cmd))
+	_, err = c.conn.Rw.Write([]byte(cmd))
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	err = c.conn.Rw.Flush()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	var items []Item
 	for {
 		line, err := c.conn.Rw.ReadSlice('\n')
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		if bytes.Equal(line, resultEnd) {
 			break
 		}
 		if bytes.Equal(line, resultError) {
-			return nil, errors.New("command error")
+			return nil, nil, errors.New("command error")
 		}
 		pattern := "VALUE %s %d %d %d\r\n"
 		var item Item
@@ -391,22 +476,22 @@ func (c *Client) Gets(keys []Key) ([]Item, error) {
 		}
 		line2, err := c.conn.Rw.ReadSlice('\n')
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		if len(line2) < item.Size+2 {
 			continue
 		}
 		item.Value = strings.TrimRight(string(line2), "\r\n")
-		item.Expire = m[item.Key].Exp
+		item.Expire = keysMap[item.Key].ExpireAt
 		items = append(items, item)
 		temp[item.Key] = 1
 	}
-	for _, it := range m {
+	for _, it := range keysMap {
 		if _, ok := temp[it.Name]; !ok {
-			fmt.Println("failed key: ", it.Name)
+			failedKeys = append(failedKeys, it.Name)
 		}
 	}
-	return items, nil
+	return
 }
 
 func (c *Client) Add(item Item) error {
@@ -436,6 +521,7 @@ func (c *Client) Add(item Item) error {
 	return errors.New("add failed: " + strings.TrimRight(string(line), "\r\n"))
 }
 
+// 切片分隔
 func keysChunk(keys []Key, size int) [][]Key {
 	length := len(keys)
 	chunks := int(math.Ceil(float64(length) / float64(size)))

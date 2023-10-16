@@ -1,9 +1,11 @@
 package utils
 
 import (
+	"fmt"
 	"net"
 	"strconv"
 	"strings"
+	"time"
 )
 
 func CompareVer(a, b string) (ret int) {
@@ -37,6 +39,7 @@ func CompareVer(a, b string) (ret int) {
 
 func GetDumpFilename(addr net.Addr) string {
 	filename := strings.Replace(addr.String(), ".", "_", -1)
-	filename = strings.Replace(filename, ":", "_", -1) + ".txt"
+	filename = strings.Replace(filename, ":", "_", -1)
+	filename = fmt.Sprintf("%s_%s.txt", filename, time.Now().Format("20060102150405"))
 	return filename
 }

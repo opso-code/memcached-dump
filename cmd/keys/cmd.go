@@ -36,8 +36,9 @@ func init() {
 				cobra.CheckErr(fmt.Errorf("get memcached keys failed %s", err))
 			}
 			for _, key := range keys {
-				fmt.Printf("Key: %s,\tSize: %d,\tExpireAt: %d\n", key.Name, key.Size, key.Exp)
+				fmt.Printf("Key: %s,\tSize: %d,\tExpireAt: %d\n", key.Name, key.Size, key.ExpireAt)
 			}
+			fmt.Printf("Total %d\n", len(keys))
 		},
 	}
 }

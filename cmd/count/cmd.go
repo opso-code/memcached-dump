@@ -35,7 +35,7 @@ func init() {
 			if err != nil {
 				cobra.CheckErr(fmt.Errorf("get memcached keys failed %s", err))
 			}
-			fmt.Printf("memcached %s items count %d\n", address, len(keys))
+			fmt.Printf("Total %d\n", len(keys))
 		},
 	}
 }

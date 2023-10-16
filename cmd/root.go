@@ -2,16 +2,17 @@ package cmd
 
 import (
 	"fmt"
-	"memcached-dump/cmd/count"
-	"memcached-dump/cmd/dump"
-	"memcached-dump/cmd/store"
 	"os"
 	"runtime"
+
+	"memcached-dump/cmd/count"
+	"memcached-dump/cmd/dump"
+	"memcached-dump/cmd/transfer"
 
 	"github.com/spf13/cobra"
 
 	"memcached-dump/cmd/keys"
-	"memcached-dump/cmd/ver"
+	"memcached-dump/cmd/stats"
 	"memcached-dump/internal/version"
 )
 
@@ -36,5 +37,5 @@ func Execute() {
 
 func init() {
 	rootCmd.Version = fmt.Sprintf("%s %s/%s", version.BuildVersion, runtime.GOOS, runtime.GOARCH)
-	rootCmd.AddCommand(keys.Cmd, ver.Cmd, store.Cmd, count.Cmd, dump.Cmd)
+	rootCmd.AddCommand(keys.Cmd, stats.Cmd, dump.Cmd, count.Cmd, transfer.Cmd)
 }

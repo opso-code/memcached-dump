@@ -1,10 +1,12 @@
-package store
+package stats
 
 import (
 	"fmt"
 	"net"
+	"strings"
 
 	"github.com/spf13/cobra"
+
 	"memcached-dump/internal/client"
 )
 
@@ -12,9 +14,9 @@ var Cmd *cobra.Command
 
 func init() {
 	Cmd = &cobra.Command{
-		Use:     "store",
-		Short:   "存储memcached所有key到文件中",
-		Example: "store 127.0.0.1:11211",
+		Use:     "stats",
+		Short:   "查询memcached版本号",
+		Example: "version 127.0.0.1:11211",
 		Run: func(cmd *cobra.Command, args []string) {
 			address := "127.0.0.1:11211"
 			if len(args) > 0 {
@@ -31,11 +33,12 @@ func init() {
 			}
 			defer cli.Close()
 
-			num, err := cli.Store()
+			info, err := cli.Stats()
 			if err != nil {
-				cobra.CheckErr(fmt.Errorf("get memcached keys failed %s", err))
+				cobra.CheckErr(fmt.Errorf("get memcached version failed %s", err))
 			}
-			fmt.Printf("memcached %s items store success %d\n", address, num)
+			fmt.Printf("memcached %s stats:\n", address)
+			fmt.Println(strings.Join(info.Raw, "\n"))
 		},
 	}
 }

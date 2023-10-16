@@ -14,18 +14,9 @@
 
 ## 运行
 
-```
-$ cd build
-$ ./memcached-dump version 127.0.0.1:11211
-```
-
-```
-Usage :
-   version <IP:PORT> show the memcached version
-   count <IP:PORT>   count the keys
-   keys <IP:PORT>    list all keys
-   store <IP:PORT>   store data to local file
-   dump <IP:PORT> <IP:PORT>  dump all data to another memcached
+```bash
+# 帮助
+$ ./memcached -h
 ```
 
 ## 注意

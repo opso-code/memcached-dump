@@ -1,7 +1,7 @@
 BINARY = memcached-dump
 GOARCH = amd64
 
-RELEASE ?= v1.0.0
+RELEASE ?= $(shell grep -Eo '([0-9].[0-9].[0-9])' internal/version/version.go)
 BUILD_TIME?=$(shell date '+%Y-%m-%d %H:%M:%S')
 
 CURRENT_DIR = $(shell pwd)
