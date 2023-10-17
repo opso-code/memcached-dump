@@ -13,7 +13,7 @@ var Cmd *cobra.Command
 func init() {
 	Cmd = &cobra.Command{
 		Use:     "dump",
-		Short:   "导出memcached所有key到当前目录文件中",
+		Short:   "dump data to local file - 导出memcached所有key到当前目录文件中",
 		Example: "dump 127.0.0.1:11211",
 		Run: func(cmd *cobra.Command, args []string) {
 			address := "127.0.0.1:11211"
@@ -31,11 +31,11 @@ func init() {
 			}
 			defer cli.Close()
 
-			num, err := cli.Store()
+			num, err := cli.DumpToFile()
 			if err != nil {
 				cobra.CheckErr(fmt.Errorf("get memcached keys failed %s", err))
 			}
-			fmt.Printf("memcached %s items store success %d\n", address, num)
+			fmt.Printf("memcached %s items dump to file success count %d\n", address, num)
 		},
 	}
 }

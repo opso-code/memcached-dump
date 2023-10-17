@@ -13,7 +13,7 @@ var Cmd *cobra.Command
 func init() {
 	Cmd = &cobra.Command{
 		Use:     "keys",
-		Short:   "列出memcached所有key",
+		Short:   "List all the keys - 列出memcached所有key",
 		Example: "keys 127.0.0.1:11211",
 		Run: func(cmd *cobra.Command, args []string) {
 			address := "127.0.0.1:11211"

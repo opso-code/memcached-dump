@@ -15,7 +15,7 @@ var Cmd *cobra.Command
 func init() {
 	Cmd = &cobra.Command{
 		Use:     "stats",
-		Short:   "查询memcached版本号",
+		Short:   "Execute stats command - 查询memcached stats信息",
 		Example: "version 127.0.0.1:11211",
 		Run: func(cmd *cobra.Command, args []string) {
 			address := "127.0.0.1:11211"

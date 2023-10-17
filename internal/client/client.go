@@ -29,6 +29,8 @@ var (
 
 const SupportMetaDumpVersion = "1.4.31"
 
+const QueryChunkSize = 200 // 批量查询数据时一次性最多查询条数
+
 type Client struct {
 	conn *conn.Conn
 }
@@ -185,6 +187,7 @@ type Key struct {
 }
 
 func (c *Client) GetKeysByCacheDump() (map[string]Key, error) {
+	log.Println("\033[7;37;40m[memcached版本过旧或不支持lru_crawler metadump命令，正在使用stats cachedump命令查询所有key（受限1M大小数据）]\033[0m")
 	slabs, total, err := c.GetSlabs()
 	if err != nil {
 		return nil, err
@@ -238,6 +241,7 @@ func (c *Client) GetKeysByCacheDump() (map[string]Key, error) {
 }
 
 func (c *Client) GetKeysByCrawler() (map[string]Key, error) {
+	log.Println("\033[7;37;40m[使用lru_crawler metadump all命令查询所有key]\033[0m")
 	err := c.conn.Nc.SetReadDeadline(time.Now().Add(6 * time.Second))
 	if err != nil {
 		return nil, err
@@ -290,23 +294,25 @@ func (c *Client) GetKeysByCrawler() (map[string]Key, error) {
 	return m, nil
 }
 
+// 是否支持`lru_crawler metadump`命令
+func IsMetaDumpSupport(ver string) bool {
+	return utils.CompareVer(ver, SupportMetaDumpVersion) >= 0 && ver != "1.5.1" && ver != "1.5.2" && ver != "1.5.3"
+}
+
 func (c *Client) GetKeys() (map[string]Key, error) {
 	ver, err := c.Version()
 	if err != nil {
 		return nil, err
 	}
 	log.Println("memcached version", ver)
-	metaDumpSupport := utils.CompareVer(ver, SupportMetaDumpVersion) >= 0 // 是否支持`lru_crawler metadump`命令
 	var keys map[string]Key
-	if !metaDumpSupport {
-		log.Println("\033[7;37;40m[memcached版本过久，正在使用stats cachedump命令查询所有key（受限1M大小数据）]\033[0m")
+	if !IsMetaDumpSupport(ver) {
 		keys, err = c.GetKeysByCacheDump()
 		if err != nil {
 			log.Println(err)
 			return nil, err
 		}
 	} else {
-		log.Println("\033[7;37;40m[使用lru_crawler metadump all命令查询所有key]\033[0m")
 		keys, err = c.GetKeysByCrawler()
 		if err != nil {
 			log.Println("\033[7;37;40m[命令超时或memcached实例启动时未开启-o lru_crawler]\033[0m")
@@ -325,7 +331,7 @@ type Item struct {
 	Expire int64
 }
 
-func (c *Client) Store() (int, error) {
+func (c *Client) DumpToFile() (int, error) {
 	keys, err := c.GetKeys()
 	if err != nil {
 		return 0, err
@@ -346,7 +352,7 @@ func (c *Client) Store() (int, error) {
 	for _, key := range keys {
 		keyArr = append(keyArr, key)
 	}
-	chunks := keysChunk(keyArr, 100) // 切割为小数组
+	chunks := keysChunk(keyArr, QueryChunkSize) // 切割为小数组
 	var bar utils.Bar
 	bar.NewOption(0, int64(length))
 	wl := 0
@@ -378,7 +384,7 @@ func (c *Client) Store() (int, error) {
 	return wl, nil
 }
 
-func (c *Client) DumpTo(addr net.Addr) (int, error) {
+func (c *Client) Transfer(addr net.Addr) (int, error) {
 	keys, err := c.GetKeys()
 	if err != nil {
 		return 0, err

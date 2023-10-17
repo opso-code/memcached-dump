@@ -13,7 +13,7 @@ var Cmd *cobra.Command
 func init() {
 	Cmd = &cobra.Command{
 		Use:     "count",
-		Short:   "列出memcached所有key的条数",
+		Short:   "List item num in Memcached - 列出memcached所有key的条数",
 		Example: "count 127.0.0.1:11211",
 		Run: func(cmd *cobra.Command, args []string) {
 			address := "127.0.0.1:11211"

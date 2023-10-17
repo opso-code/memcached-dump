@@ -5,6 +5,7 @@ import (
 	"net"
 
 	"github.com/spf13/cobra"
+
 	"memcached-dump/internal/client"
 )
 
@@ -13,7 +14,7 @@ var Cmd *cobra.Command
 func init() {
 	Cmd = &cobra.Command{
 		Use:     "transfer",
-		Short:   "读取并导出memcached所有key到另一个memcached实例中",
+		Short:   "Transfer all the data to another Memcached - 读取并导出memcached所有key到另一个memcached实例中",
 		Example: "transfer 127.0.0.1:11211 127.0.0.1:11212",
 		Run: func(cmd *cobra.Command, args []string) {
 			if len(args) < 2 {
@@ -38,7 +39,7 @@ func init() {
 			}
 			defer cli.Close()
 
-			num, err := cli.DumpTo(dstAddr)
+			num, err := cli.Transfer(dstAddr)
 			if err != nil {
 				cobra.CheckErr(fmt.Errorf("get memcached dump failed %s", err))
 			}

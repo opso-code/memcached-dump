@@ -20,9 +20,9 @@ import (
 var rootCmd = &cobra.Command{
 	Use:   "memcached-dump",
 	Short: "memcached导出工具",
-	Long: `
-由于memcached在v1.4.31才支持的lru_crawler metadump命令，之前的版本只能使用stats cachedump命令，有1M的数据大小限制（大概几W个key，看key的长度），所以低版本无法导出完整数据。
-如果遇到命令超时程序也会转而使用旧的方式获取key，于是也会有1M大小限制。
+	Long: `memcached-dump
+如果你的memcached实例版本是大于1.4.31，且不为1.5.1/1.5.2/1.5.3，可以尝试使用这个工具导出所有数据，否则可能数据导出不全
+If your version of Memcached is greater than 1.4.31, and it is not 1.5.1/1.5.2/1.5.3, you can try to use this tool to export all data, otherwise the data export may be incomplete.
 `,
 }
 
